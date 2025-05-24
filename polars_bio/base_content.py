@@ -1,11 +1,16 @@
 import polars as pl
-from polars_bio import _base_content  # Zakładamy, że funkcja Rust jest zbudowana jako moduł Python
+import pyarrow as pa
+from polars_bio.polars_bio import base_content
 
 def base_sequence_content(df: pl.DataFrame) -> pl.DataFrame:
     """
     Analizuje zawartość sekwencji na każdej pozycji w odczytach FASTQ.
+    Przekazuje dane jako RecordBatchReader do funkcji Rust.
     """
-    return _base_content.base_content(df)
+    arrow_table = df.to_arrow()
+    reader = pa.RecordBatchReader.from_batches(arrow_table.schema, [arrow_table])
+    result_arrow = base_content(reader)
+    return pl.from_arrow(result_arrow)
 
 def plot_base_content(df: pl.DataFrame):
     """
