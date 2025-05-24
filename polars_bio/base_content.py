@@ -1,11 +1,15 @@
 import polars as pl
-from polars_bio import _base_content  # Zakładamy, że funkcja Rust jest zbudowana jako moduł Python
+from polars_bio.polars_bio import test_base_content
+from .context import ctx
 
-def base_sequence_content(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Analizuje zawartość sekwencji na każdej pozycji w odczytach FASTQ.
-    """
-    return _base_content.base_content(df)
+def base_content() -> pl.DataFrame:
+    return test_base_content(ctx).to_polars()
+
+# def base_sequence_content(df: pl.DataFrame) -> pl.DataFrame:
+#     """
+#     Analizuje zawartość sekwencji na każdej pozycji w odczytach FASTQ.
+#     """
+#     return _base_content.base_content(df)
 
 def plot_base_content(df: pl.DataFrame):
     """

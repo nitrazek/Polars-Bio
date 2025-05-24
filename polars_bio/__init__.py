@@ -17,6 +17,8 @@ from .polars_ext import PolarsRangesOperations as LazyFrame
 from .range_op import FilterOp, count_overlaps, coverage, merge, nearest, overlap
 from .range_viz import visualize_intervals
 
+from .base_content import base_content
+
 POLARS_BIO_MAX_THREADS = "datafusion.execution.target_partitions"
 
 
