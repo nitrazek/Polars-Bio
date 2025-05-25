@@ -22,30 +22,30 @@ const G: usize = 2;
 const T: usize = 3;
 const N: usize = 4;
 
-#[derive(Debug)]
-struct BaseSequenceContent {
-    base_count: [Vec<Option<u32>>; 5]
-}
-
-impl BaseSequenceContent {
-    pub fn new() -> Self {
-        Self {
-            base_count: [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()]
-        }
-    }
-}
-
-impl Accumulator for BaseSequenceContent {
-    fn state(&mut self) -> Result<Vec<ScalarValue>> {
-        Ok(self.base_count.iter().map(|v| {
-            ScalarValue::List(Arc::new(ListArray::from_iter_primitive::<UInt32Type, _, _>(vec![Some(v.clone())])))
-        }).collect())
-    }
-
-    fn evaluate(&mut self) -> Result<ScalarValue> {
-        
-    }
-}
+// #[derive(Debug)]
+// struct BaseSequenceContent {
+//     base_count: [Vec<Option<u32>>; 5]
+// }
+//
+// impl BaseSequenceContent {
+//     pub fn new() -> Self {
+//         Self {
+//             base_count: [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()]
+//         }
+//     }
+// }
+//
+// impl Accumulator for BaseSequenceContent {
+//     fn state(&mut self) -> Result<Vec<ScalarValue>> {
+//         Ok(self.base_count.iter().map(|v| {
+//             ScalarValue::List(Arc::new(ListArray::from_iter_primitive::<UInt32Type, _, _>(vec![Some(v.clone())])))
+//         }).collect())
+//     }
+//
+//     fn evaluate(&mut self) -> Result<ScalarValue> {
+//         
+//     }
+// }
 
 // let sequences = df.column("sequence")?.utf8()?;
 // let mut position_counts: Vec<HashMap<char, usize>> = Vec::new();
@@ -84,20 +84,35 @@ impl Accumulator for BaseSequenceContent {
 //
 // Ok(result_df)
 
-async fn do_base_content(ctx: &ExonSession) -> DataFrame {
+pub(crate) async fn do_base_sequence_content(
+    ctx: &ExonSession,
+    table_name: String
+)-> DataFrame {
     ctx.sql("WITH my_map AS (SELECT MAP { 'key1': 'value1', 'key2': 'value2' } AS map) SELECT map_extract(map, 'key1') AS key1, map_extract(map, 'key2') AS key2 FROM my_map;").await.unwrap()
 }
 
-#[pyfunction]
-#[pyo3(signature = (py_ctx, df))]
-pub(crate) fn test_base_content(
-    py_ctx: &PyBioSessionContext,
-    df: PyArrowType<ArrowArrayStreamReader>
-) -> PyResult<PyDataFrame> {
-    let rt = Runtime::new().unwrap();
-    let ctx = &py_ctx.ctx;
-    register_frame(py_ctx, df, LEFT_TABLE.to_string());
-
-    let output_df: DataFrame = rt.block_on(do_base_content(ctx));
-    Ok(PyDataFrame::new(output_df))
+pub(crate) async fn do_test_base_sequence_content(
+    ctx: &ExonSession,
+    table_name: String
+) -> DataFrame {
+    let query = "
+        WITH base_sequence_map AS (
+            SELECT MAP {
+                'A_count': [1, 2, 3],
+                'C_count': [4, 5, 6],
+                'T_count': [2, 3, 4],
+                'G_count': [1, 5, 4],
+                'N_count': [3, 1, 2]
+            } AS map
+        )
+        SELECT
+            array_any_value(map_extract(map, 'A_count')) AS A_count,
+            array_any_value(map_extract(map, 'C_count')) AS C_count,
+            array_any_value(map_extract(map, 'T_count')) AS T_count,
+            array_any_value(map_extract(map, 'G_count')) AS G_count,
+            array_any_value(map_extract(map, 'N_count')) AS N_count
+        FROM base_sequence_map;
+    ";
+    let df: DataFrame = ctx.sql(&query).await.unwrap();
+    df.unnest_columns(&["a_count", "c_count", "t_count", "g_count", "n_count"]).unwrap()
 }

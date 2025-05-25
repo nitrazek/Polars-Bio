@@ -1,4 +1,3 @@
-mod base_content;
 mod context;
 mod operation;
 mod option;
@@ -7,6 +6,7 @@ mod scan;
 mod streaming;
 mod udtf;
 mod utils;
+mod quality_control;
 
 use std::string::ToString;
 use std::sync::{Arc, Mutex};
@@ -31,8 +31,7 @@ use crate::option::{
 use crate::scan::{maybe_register_table, register_frame, register_table};
 use crate::streaming::RangeOperationScan;
 use crate::utils::convert_arrow_rb_schema_to_polars_df_schema;
-
-use crate::base_content::test_base_content;
+use crate::quality_control::{do_base_sequence_content, do_test_base_sequence_content};
 
 const LEFT_TABLE: &str = "s1";
 const RIGHT_TABLE: &str = "s2";
@@ -406,10 +405,24 @@ fn py_from_polars(
     })
 }
 
+#[pyfunction]
+#[pyo3(signature = (py_ctx, df))]
+fn py_base_sequence_content(
+    py_ctx: &PyBioSessionContext,
+    df: PyArrowType<ArrowArrayStreamReader>
+) -> PyResult<PyDataFrame> {
+    let rt = Runtime::new().unwrap();
+    let ctx = &py_ctx.ctx;
+    register_frame(py_ctx, df, LEFT_TABLE.to_string());
+
+    Ok(PyDataFrame::new(rt.block_on(
+        do_test_base_sequence_content(ctx, LEFT_TABLE.to_string())
+    )))
+}
+
 #[pymodule]
 fn polars_bio(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
-    m.add_function(wrap_pyfunction!(test_base_content, m)?)?;
     m.add_function(wrap_pyfunction!(range_operation_frame, m)?)?;
     m.add_function(wrap_pyfunction!(range_operation_scan, m)?)?;
     m.add_function(wrap_pyfunction!(stream_range_operation_scan, m)?)?;
@@ -421,6 +434,7 @@ fn polars_bio(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_describe_vcf, m)?)?;
     m.add_function(wrap_pyfunction!(py_register_view, m)?)?;
     m.add_function(wrap_pyfunction!(py_from_polars, m)?)?;
+    m.add_function(wrap_pyfunction!(py_base_sequence_content, m)?)?;
     // m.add_function(wrap_pyfunction!(unary_operation_scan, m)?)?;
     m.add_class::<PyBioSessionContext>()?;
     m.add_class::<FilterOp>()?;
