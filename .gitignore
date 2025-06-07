@@ -17,3 +17,4 @@ benchmark/src/results/overlap
 mprofile*dat
 *csv
 *fastq
+notebooks/tmp
