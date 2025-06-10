@@ -1,7 +1,9 @@
+use arrow::array::{ArrayBuilder, ListBuilder, StructBuilder, UInt64Builder};
 use arrow_array::{ArrayRef, ListArray, StructArray, UInt32Array, StringArray};
 use arrow_schema::{DataType, Field};
 use datafusion::arrow::ffi_stream::ArrowArrayStreamReader;
 use datafusion::arrow::pyarrow::PyArrowType;
+use datafusion::logical_expr::test::function_stub::count;
 use datafusion::physical_plan::Accumulator;
 use datafusion::error::Result;
 use datafusion::scalar::ScalarValue;
@@ -68,16 +70,42 @@ impl BaseSequenceContent {
 
 impl Accumulator for BaseSequenceContent {
     fn state(&mut self) -> Result<Vec<ScalarValue>> {
-        let mut structs = Vec::new();
-        let struct_datatype = DataType::Struct(vec![
+        let capacity = self.base_count.len();
+
+        let struct_fields = vec![
             Field::new("key", DataType::UInt64, false),
-            Field::new("values", DataType::List(Arc::new(Field::new("item", DataType::UInt32, false))))
-        ]);
-        for (i, array) in &self.base_count {
-            let values: Vec<ScalarValue> = array.iter().map(|&v| ScalarValue::from(v)).collect();
-            serialized_state.push(ScalarValue::List(ScalarValue::new_list(&values, &DataType::UInt64, false)));
-        }
-        Ok(serialized_state)
+            Field::new("value", DataType::FixedSizeList(Arc::new(Field::new("item", DataType::UInt64, false)), 5), false)
+        ];
+        let struct_data_type = DataType::Struct(struct_fields.clone().into());
+       
+        // let key_int_builder = UInt64Builder::with_capacity(capacity);
+        // let count_int_values_builder = UInt64Builder::with_capacity(capacity);
+        // let count_int_list_builder = ListBuilder::new(count_int_values_builder);
+        // let mut struct_builder = StructBuilder::new(
+        //     struct_fields.clone(),
+        //     vec![
+        //         Box::new(key_int_builder),
+        //         Box::new(count_int_list_builder)
+        //     ]
+        // );
+        let mut struct_builder = StructBuilder::from_fields(struct_fields, 0);
+
+        let key_builder = struct_builder.field_builder::<UInt64Builder>(0).unwrap();
+        let count_list_builder = struct_builder.field_builder::<ListBuilder<UInt64Builder>>(1).unwrap();
+        // let count_list_builder = count_list_builder_option.as_mut().unwrap();
+        let count_values_builder = count_list_builder.values();
+
+    //     for (i, array) in &self.base_count {
+    //         struct_builder.append(true);
+    //         key_builder.append_value(*i);
+    //         for &value in array {
+    //             count_values_builder.append_value(value);
+    //         }
+    //         count_list_builder.append(true);
+    //     }
+    // 
+    //     let struct_array = Arc::new(struct_builder.finish());
+    //     Ok(vec![ScalarValue::Struct(struct_array)])
     }
 
     fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
