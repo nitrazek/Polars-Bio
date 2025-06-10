@@ -1,4 +1,4 @@
-from polars_bio.polars_bio import InputFormat
+from polars_bio.polars_bio import GffReadOptions, InputFormat
 from polars_bio.polars_bio import PyObjectStorageOptions as ObjectStorageOptions
 from polars_bio.polars_bio import ReadOptions, VcfReadOptions
 
@@ -9,8 +9,10 @@ from .io import (
     read_bam,
     read_fasta,
     read_fastq,
+    read_gff,
     read_table,
     read_vcf,
+    register_gff,
     register_vcf,
     register_view,
     sql,
@@ -34,10 +36,12 @@ __all__ = [
     "visualize_intervals",
     "read_bam",
     "read_vcf",
+    "read_gff",
     "read_fasta",
     "read_fastq",
     "read_table",
     "register_vcf",
+    "register_gff",
     "describe_vcf",
     "register_view",
     "from_polars",

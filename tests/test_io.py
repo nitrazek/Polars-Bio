@@ -105,10 +105,12 @@ class TestIOTable:
 
 class TestIOVCF:
     df_bgz = pb.read_vcf(f"{DATA_DIR}/io/vcf/vep.vcf.bgz").collect()
+    df_gz = pb.read_vcf(f"{DATA_DIR}/io/vcf/vep.vcf.gz").collect()
     df_none = pb.read_vcf(f"{DATA_DIR}/io/vcf/vep.vcf").collect()
 
     def test_count(self):
         assert len(self.df_none) == 2
+        assert len(self.df_gz) == 2
         assert len(self.df_bgz) == 2
 
     def test_fields(self):
@@ -117,3 +119,48 @@ class TestIOVCF:
             self.df_bgz["start"][1] == 26965148 and self.df_none["start"][1] == 26965148
         )
         assert self.df_bgz["ref"][0] == "G" and self.df_none["ref"][0] == "G"
+
+
+class TestIOGFF:
+    df_bgz = pb.read_gff(f"{DATA_DIR}/io/gff/gencode.v38.annotation.gff3.bgz").collect()
+    df_gz = pb.read_gff(f"{DATA_DIR}/io/gff/gencode.v38.annotation.gff3.gz").collect()
+    df_none = pb.read_gff(f"{DATA_DIR}/io/gff/gencode.v38.annotation.gff3").collect()
+
+    def test_count(self):
+        assert len(self.df_none) == 3
+        assert len(self.df_gz) == 3
+        assert len(self.df_bgz) == 3
+
+    def test_fields(self):
+        assert self.df_bgz["chrom"][0] == "chr1" and self.df_none["chrom"][0] == "chr1"
+        assert self.df_bgz["start"][1] == 11869 and self.df_none["start"][1] == 11869
+        assert self.df_bgz["type"][2] == "exon" and self.df_none["type"][2] == "exon"
+        assert self.df_bgz["attributes"][0][0] == {
+            "tag": "ID",
+            "value": "ENSG00000223972.5",
+        }
+
+    def test_register_table(self):
+        pb.register_gff(
+            f"{DATA_DIR}/io/gff/gencode.v38.annotation.gff3.bgz", "test_gff3"
+        )
+        count = pb.sql("select count(*) as cnt from test_gff3").collect()
+        assert count["cnt"][0] == 3
+
+    def test_register_gff_unnest(self):
+        pb.register_gff(
+            f"{DATA_DIR}/io/gff/gencode.v38.annotation.gff3.bgz",
+            "test_gff3_unnest",
+            attr_fields=["ID", "havana_transcript"],
+        )
+        count = pb.sql(
+            "select count(*) as cnt from test_gff3_unnest where `ID` = 'ENSG00000223972.5'"
+        ).collect()
+        assert count["cnt"][0] == 1
+
+        projection = pb.sql(
+            "select `ID`, `havana_transcript` from test_gff3_unnest"
+        ).collect()
+        assert projection["ID"][0] == "ENSG00000223972.5"
+        assert projection["havana_transcript"][0] == None
+        assert projection["havana_transcript"][1] == "OTTHUMT00000362751.1"
