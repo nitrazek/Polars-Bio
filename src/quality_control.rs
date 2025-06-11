@@ -10,26 +10,6 @@ use exon::ExonSession;
 use datafusion::dataframe::DataFrame;
 use std::sync::Arc;
 
-const LEFT_TABLE: &str = "s1";
-// const A: usize = 0;
-// const C: usize = 1;
-// const G: usize = 2;
-// const T: usize = 3;
-// const N: usize = 4;
-
-// fn get_list_array(v: Vec<Option<u32>>) -> Arc<ListArray> {
-//     Arc::new(ListArray::from_iter_primitive::<UInt32Type, _, _>(vec![Some(v.clone())]))
-// }
-
-// fn get_struct_array(m: HashMap<&str, Vec<Option<u32>>>) -> Arc<StructArray> {
-//     Arc::new(StructArray::from(m.into_iter().map(|(k, v)| {
-//         (
-//             Arc::new(Field::new(k, DataType::List(Arc::new(Field::new("item", DataType::UInt32, false))), false)),
-//             get_list_array(v.clone()) as ArrayRef
-//         )
-//     }).collect::<Vec<(Arc<Field>, ArrayRef)>>()))
-// }
-
 #[derive(Debug)]
 struct BaseSequenceContent {
     a_counts: Vec<Option<u64>>,
@@ -180,10 +160,8 @@ impl Accumulator for BaseSequenceContent {
             let other_n_counts = n_counts_array_ref.as_any().downcast_ref::<UInt64Array>().unwrap();
             let other_max_pos = max_pos_array.value(i) as usize;
 
-            // Upewniamy się, że nasz akumulator ma wystarczającą pojemność do połączenia stanów.
             self.ensure_capacity(other_max_pos);
 
-            // Sumujemy zliczenia z innych akumulatorów do bieżącego stanu.
             for pos in 0..other_max_pos {
                 self.a_counts[pos] = self.a_counts[pos].map_or(Some(1), |val| Some(val + other_a_counts.value(pos)));
                 self.c_counts[pos] = self.c_counts[pos].map_or(Some(1), |val| Some(val + other_c_counts.value(pos)));
@@ -257,34 +235,5 @@ pub(crate) async fn do_base_sequence_content(
         table_name
     );
     
-    let df = ctx.sql(&query).await.unwrap();
-    df.clone().show().await.unwrap();
-    df
-}
-
-pub(crate) async fn do_test_base_sequence_content(
-    ctx: &ExonSession,
-    table_name: String,
-) -> DataFrame {
-    let query = "
-        WITH base_sequence_map AS (
-            SELECT MAP {
-                'A_count': [1, 2, 3],
-                'C_count': [4, 5, 6],
-                'T_count': [2, 3, 4],
-                'G_count': [1, 5, 4],
-                'N_count': [3, 1, 2]
-            } AS map
-        )
-        SELECT
-            array_any_value(map_extract(map, 'A_count')) AS A_count,
-            array_any_value(map_extract(map, 'C_count')) AS C_count,
-            array_any_value(map_extract(map, 'T_count')) AS T_count,
-            array_any_value(map_extract(map, 'G_count')) AS G_count,
-            array_any_value(map_extract(map, 'N_count')) AS N_count
-        FROM base_sequence_map;
-    ";
-    let df: DataFrame = ctx.sql(&query).await.unwrap();
-    df.unnest_columns(&["a_count", "c_count", "t_count", "g_count", "n_count"])
-        .unwrap()
+    ctx.sql(&query).await.unwrap()
 }
