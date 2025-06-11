@@ -13,10 +13,13 @@ use polars::prelude::DataType;
 use tokio::runtime::Runtime;
 use pyo3::prelude::*;
 use datafusion::dataframe::DataFrame;
+use datafusion::error::Result;
+use datafusion::physical_plan::Accumulator;
+use datafusion::scalar::ScalarValue;
 use datafusion_python::dataframe::PyDataFrame;
-use arrow::datatypes::UInt32Type;
-use std::collections::HashMap;
-use std::sync::Arc;
+use exon::ExonSession;
+use pyo3::prelude::*;
+use tokio::runtime::Runtime;
 
 use crate::context::PyBioSessionContext;
 use crate::register_frame;
@@ -75,14 +78,17 @@ impl BaseSequenceContent {
 
     fn update_state(&mut self, s: &String) -> () {
         for (pos, base) in s.chars().enumerate() {
-            let pos_count = self.base_count.entry(pos as u64).or_insert_with(|| [0_u64; 5]);
+            let pos_count = self
+                .base_count
+                .entry(pos as u64)
+                .or_insert_with(|| [0_u64; 5]);
             let i = match base {
                 'A' | 'a' => 0,
                 'C' | 'c' => 1,
                 'G' | 'g' => 2,
                 'T' | 't' => 3,
                 'N' | 'n' => 4,
-                _ => panic!("Invalid base")
+                _ => panic!("Invalid base"),
             };
             pos_count[i] += 1;
         }
@@ -269,7 +275,7 @@ pub(crate) async fn do_base_sequence_content(
 
 pub(crate) async fn do_test_base_sequence_content(
     ctx: &ExonSession,
-    table_name: String
+    table_name: String,
 ) -> DataFrame {
     let query = "
         WITH base_sequence_map AS (
@@ -290,5 +296,6 @@ pub(crate) async fn do_test_base_sequence_content(
         FROM base_sequence_map;
     ";
     let df: DataFrame = ctx.sql(&query).await.unwrap();
-    df.unnest_columns(&["a_count", "c_count", "t_count", "g_count", "n_count"]).unwrap()
+    df.unnest_columns(&["a_count", "c_count", "t_count", "g_count", "n_count"])
+        .unwrap()
 }
