@@ -1,28 +1,15 @@
 use arrow::array::{ArrayBuilder, ListBuilder, StructBuilder, UInt64Builder};
-use arrow_array::{ArrayRef, ListArray, StructArray, UInt32Array, StringArray};
+use arrow_array::{Array, ArrayRef, ListArray, StringArray, UInt32Array};
 use arrow_schema::{DataType, Field};
-use datafusion::arrow::ffi_stream::ArrowArrayStreamReader;
-use datafusion::arrow::pyarrow::PyArrowType;
-use datafusion::logical_expr::test::function_stub::count;
 use datafusion::logical_expr::{create_udaf, Volatility};
 use datafusion::physical_plan::Accumulator;
 use datafusion::error::{DataFusionError, Result};
 use datafusion::scalar::ScalarValue;
 use exon::ExonSession;
-use polars::prelude::DataType;
-use tokio::runtime::Runtime;
 use pyo3::prelude::*;
 use datafusion::dataframe::DataFrame;
-use datafusion::error::Result;
-use datafusion::physical_plan::Accumulator;
-use datafusion::scalar::ScalarValue;
-use datafusion_python::dataframe::PyDataFrame;
-use exon::ExonSession;
-use pyo3::prelude::*;
 use tokio::runtime::Runtime;
-
-use crate::context::PyBioSessionContext;
-use crate::register_frame;
+use std::sync::Arc;
 
 const LEFT_TABLE: &str = "s1";
 // const A: usize = 0;
@@ -75,35 +62,17 @@ impl BaseSequenceContent {
             self.max_position_seen = desired_len;
         }
     }
-
-    fn update_state(&mut self, s: &String) -> () {
-        for (pos, base) in s.chars().enumerate() {
-            let pos_count = self
-                .base_count
-                .entry(pos as u64)
-                .or_insert_with(|| [0_u64; 5]);
-            let i = match base {
-                'A' | 'a' => 0,
-                'C' | 'c' => 1,
-                'G' | 'g' => 2,
-                'T' | 't' => 3,
-                'N' | 'n' => 4,
-                _ => panic!("Invalid base"),
-            };
-            pos_count[i] += 1;
-        }
-    }
 }
 
 impl Accumulator for BaseSequenceContent {
     fn state(&mut self) -> Result<Vec<ScalarValue>> {
         Ok(vec![
-            ScalarValue::from(self.a_counts.clone()),
-            ScalarValue::from(self.c_counts.clone()),
-            ScalarValue::from(self.g_counts.clone()),
-            ScalarValue::from(self.t_counts.clone()),
-            ScalarValue::from(self.n_counts.clone()),
-            ScalarValue::from(self.max_position_seen as u32),
+            ScalarValue::from(Arc::new(UInt64Array::from(self.a_counts.clone()))),
+            ScalarValue::from(Arc::new(UInt64Array::from(self.c_counts.clone()))),
+            ScalarValue::from(Arc::new(UInt64Array::from(self.g_counts.clone()))),
+            ScalarValue::from(Arc::new(UInt64Array::from(self.t_counts.clone()))),
+            ScalarValue::from(Arc::new(UInt64Array::from(self.n_counts.clone()))),
+            ScalarValue::from(self.max_position_seen as u32)
         ])
     }
 
@@ -115,12 +84,12 @@ impl Accumulator for BaseSequenceContent {
             Arc::new(Field::new("T_count", DataType::UInt64, false)),
             Arc::new(Field::new("N_count", DataType::UInt64, false)),
         ];
-        let struct_builders: Vec<Arc<dyn ArrayBuilder>> = vec![
-            Arc::new(UInt64Builder::new()),
-            Arc::new(UInt64Builder::new()),
-            Arc::new(UInt64Builder::new()),
-            Arc::new(UInt64Builder::new()),
-            Arc::new(UInt64Builder::new()),
+        let struct_builders: Vec<Box<dyn ArrayBuilder>> = vec![
+            Box::new(UInt64Builder::new()),
+            Box::new(UInt64Builder::new()),
+            Box::new(UInt64Builder::new()),
+            Box::new(UInt64Builder::new()),
+            Box::new(UInt64Builder::new()),
         ];
         let mut struct_builder = StructBuilder::new(struct_fields, struct_builders);
         let mut list_builder = ListBuilder::new(struct_builder);
@@ -142,7 +111,7 @@ impl Accumulator for BaseSequenceContent {
             list_builder.append(true);
         }
         
-        Ok(ScalarValue::List(Arc::new(list_builder.build())))
+        Ok(ScalarValue::List(Arc::new(list_builder.finish())))
     }
     
     fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
@@ -153,7 +122,7 @@ impl Accumulator for BaseSequenceContent {
         })?;
 
         for i in 0..sequences.len() {
-            if let Some(seq) = sequences.value(i).as_ref() {
+            if let Some(seq) = sequences.value(i) {
                 let current_seq_len = seq.len();
                 self.ensure_capacity(current_seq_len);
 

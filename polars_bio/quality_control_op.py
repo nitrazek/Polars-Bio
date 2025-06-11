@@ -16,4 +16,3 @@ def base_sequence_content(df: pl.DataFrame) -> pl.DataFrame:
         ctx,
         df.to_arrow().to_reader()
     ).to_polars()
-
