@@ -416,7 +416,7 @@ fn py_base_sequence_content(
     register_frame(py_ctx, df, LEFT_TABLE.to_string());
 
     Ok(PyDataFrame::new(rt.block_on(
-        do_test_base_sequence_content(ctx, LEFT_TABLE.to_string())
+        do_base_sequence_content(ctx, LEFT_TABLE.to_string())
     )))
 }
 

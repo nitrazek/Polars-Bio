@@ -4,8 +4,9 @@ use arrow_schema::{DataType, Field};
 use datafusion::arrow::ffi_stream::ArrowArrayStreamReader;
 use datafusion::arrow::pyarrow::PyArrowType;
 use datafusion::logical_expr::test::function_stub::count;
+use datafusion::logical_expr::{create_udaf, Volatility};
 use datafusion::physical_plan::Accumulator;
-use datafusion::error::Result;
+use datafusion::error::{DataFusionError, Result};
 use datafusion::scalar::ScalarValue;
 use exon::ExonSession;
 use polars::prelude::DataType;
@@ -21,34 +22,54 @@ use crate::context::PyBioSessionContext;
 use crate::register_frame;
 
 const LEFT_TABLE: &str = "s1";
-const A: usize = 0;
-const C: usize = 1;
-const G: usize = 2;
-const T: usize = 3;
-const N: usize = 4;
+// const A: usize = 0;
+// const C: usize = 1;
+// const G: usize = 2;
+// const T: usize = 3;
+// const N: usize = 4;
 
-fn get_list_array(v: Vec<Option<u32>>) -> Arc<ListArray> {
-    Arc::new(ListArray::from_iter_primitive::<UInt32Type, _, _>(vec![Some(v.clone())]))
-}
+// fn get_list_array(v: Vec<Option<u32>>) -> Arc<ListArray> {
+//     Arc::new(ListArray::from_iter_primitive::<UInt32Type, _, _>(vec![Some(v.clone())]))
+// }
 
-fn get_struct_array(m: HashMap<&str, Vec<Option<u32>>>) -> Arc<StructArray> {
-    Arc::new(StructArray::from(m.into_iter().map(|(k, v)| {
-        (
-            Arc::new(Field::new(k, DataType::List(Arc::new(Field::new("item", DataType::UInt32, false))), false)),
-            get_list_array(v.clone()) as ArrayRef
-        )
-    }).collect::<Vec<(Arc<Field>, ArrayRef)>>()))
-}
+// fn get_struct_array(m: HashMap<&str, Vec<Option<u32>>>) -> Arc<StructArray> {
+//     Arc::new(StructArray::from(m.into_iter().map(|(k, v)| {
+//         (
+//             Arc::new(Field::new(k, DataType::List(Arc::new(Field::new("item", DataType::UInt32, false))), false)),
+//             get_list_array(v.clone()) as ArrayRef
+//         )
+//     }).collect::<Vec<(Arc<Field>, ArrayRef)>>()))
+// }
 
 #[derive(Debug)]
 struct BaseSequenceContent {
-    base_count: HashMap<u64, [u64; 5]>
+    a_counts: Vec<u64>,
+    c_counts: Vec<u64>,
+    t_counts: Vec<u64>,
+    g_counts: Vec<u64>,
+    n_counts: Vec<u64>,
+    max_position_seen: usize
 }
 
 impl BaseSequenceContent {
     pub fn new() -> Self {
-        Self {
-            base_count: HashMap::new()
+        BaseSequenceContent {
+            a_counts: Vec::new(),
+            c_counts: Vec::new(),
+            t_counts: Vec::new(),
+            g_counts: Vec::new(),
+            n_counts: Vec::new(),
+            max_position_seen: 0
+        }
+    }
+    
+    fn ensure_capacity(&mut self, desired_len: usize) {
+        if desired_len > self.max_position_seen {
+            self.a_counts.resize(desired_len, 0);
+            self.c_counts.resize(desired_len, 0);
+            self.g_counts.resize(desired_len, 0);
+            self.t_counts.resize(desired_len, 0);
+            self.max_position_seen = desired_len;
         }
     }
 
@@ -70,76 +91,180 @@ impl BaseSequenceContent {
 
 impl Accumulator for BaseSequenceContent {
     fn state(&mut self) -> Result<Vec<ScalarValue>> {
-        let capacity = self.base_count.len();
-
-        let struct_fields = vec![
-            Field::new("key", DataType::UInt64, false),
-            Field::new("value", DataType::FixedSizeList(Arc::new(Field::new("item", DataType::UInt64, false)), 5), false)
-        ];
-        let struct_data_type = DataType::Struct(struct_fields.clone().into());
-       
-        // let key_int_builder = UInt64Builder::with_capacity(capacity);
-        // let count_int_values_builder = UInt64Builder::with_capacity(capacity);
-        // let count_int_list_builder = ListBuilder::new(count_int_values_builder);
-        // let mut struct_builder = StructBuilder::new(
-        //     struct_fields.clone(),
-        //     vec![
-        //         Box::new(key_int_builder),
-        //         Box::new(count_int_list_builder)
-        //     ]
-        // );
-        let mut struct_builder = StructBuilder::from_fields(struct_fields, 0);
-
-        let key_builder = struct_builder.field_builder::<UInt64Builder>(0).unwrap();
-        let count_list_builder = struct_builder.field_builder::<ListBuilder<UInt64Builder>>(1).unwrap();
-        // let count_list_builder = count_list_builder_option.as_mut().unwrap();
-        let count_values_builder = count_list_builder.values();
-
-    //     for (i, array) in &self.base_count {
-    //         struct_builder.append(true);
-    //         key_builder.append_value(*i);
-    //         for &value in array {
-    //             count_values_builder.append_value(value);
-    //         }
-    //         count_list_builder.append(true);
-    //     }
-    // 
-    //     let struct_array = Arc::new(struct_builder.finish());
-    //     Ok(vec![ScalarValue::Struct(struct_array)])
+        Ok(vec![
+            ScalarValue::from(self.a_counts.clone()),
+            ScalarValue::from(self.c_counts.clone()),
+            ScalarValue::from(self.g_counts.clone()),
+            ScalarValue::from(self.t_counts.clone()),
+            ScalarValue::from(self.n_counts.clone()),
+            ScalarValue::from(self.max_position_seen as u32),
+        ])
     }
 
+    fn evaluate(&mut self) -> Result<ScalarValue> {
+        let struct_fields = vec![
+            Arc::new(Field::new("A_count", DataType::UInt64, false)),
+            Arc::new(Field::new("C_count", DataType::UInt64, false)),
+            Arc::new(Field::new("G_count", DataType::UInt64, false)),
+            Arc::new(Field::new("T_count", DataType::UInt64, false)),
+            Arc::new(Field::new("N_count", DataType::UInt64, false)),
+        ];
+        let struct_builders: Vec<Arc<dyn ArrayBuilder>> = vec![
+            Arc::new(UInt64Builder::new()),
+            Arc::new(UInt64Builder::new()),
+            Arc::new(UInt64Builder::new()),
+            Arc::new(UInt64Builder::new()),
+            Arc::new(UInt64Builder::new()),
+        ];
+        let mut struct_builder = StructBuilder::new(struct_fields, struct_builders);
+        let mut list_builder = ListBuilder::new(struct_builder);
+
+        for i in 0..self.max_position_seen {
+            let a_count = self.a_counts.get(i).copied().unwrap_or(0);
+            let c_count = self.c_counts.get(i).copied().unwrap_or(0);
+            let g_count = self.g_counts.get(i).copied().unwrap_or(0);
+            let t_count = self.t_counts.get(i).copied().unwrap_or(0);
+            let n_count = self.n_counts.get(i).copied().unwrap_or(0);
+
+            let struct_builder_ref = list_builder.values().as_any().downcast_mut::<StructBuilder>().unwrap();
+            struct_builder_ref.field_builder::<UInt64Builder>(0).unwrap().append_value(a_count);
+            struct_builder_ref.field_builder::<UInt64Builder>(1).unwrap().append_value(c_count);
+            struct_builder_ref.field_builder::<UInt64Builder>(2).unwrap().append_value(g_count);
+            struct_builder_ref.field_builder::<UInt64Builder>(3).unwrap().append_value(t_count);
+            struct_builder_ref.field_builder::<UInt64Builder>(4).unwrap().append_value(n_count);
+            struct_builder_ref.append(true);
+            list_builder.append(true);
+        }
+        
+        Ok(ScalarValue::List(Arc::new(list_builder.build())))
+    }
+    
     fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
-        let array = &values[0];
-        (0..array.len()).try_for_each(|i| {
-            let v = ScalarValue::try_from_array(array, i)?;
-            if let ScalarValue::Utf8(Some(value)) = v {
-                self.update_state(&value);
+        if values.is_empty() { return Ok(()); }
+
+        let sequences = values[0].as_any().downcast_ref::<StringArray>().ok_or_else(|| {
+            DataFusionError::Internal("Argument must be string array".to_string())
+        })?;
+
+        for i in 0..sequences.len() {
+            if let Some(seq) = sequences.value(i).as_ref() {
+                let current_seq_len = seq.len();
+                self.ensure_capacity(current_seq_len);
+
+                for (pos, base_char) in seq.chars().enumerate() {
+                    if pos < self.max_position_seen {
+                        match base_char.to_ascii_uppercase() {
+                            'A' => self.a_counts[pos] += 1,
+                            'C' => self.c_counts[pos] += 1,
+                            'G' => self.g_counts[pos] += 1,
+                            'T' => self.t_counts[pos] += 1,
+                            'N' => self.n_counts[pos] += 1,
+                            _ => {}
+                        }
+                    }
+                }
             }
-            Ok(())
-        })
+        }
+
+        Ok(())
     }
 
     fn merge_batch(&mut self, states: &[ArrayRef]) -> Result<()> {
-        
+        if states.is_empty() { return Ok(()); }
+
+        let a_counts_array = states[0].as_any().downcast_ref::<ListArray>().ok_or_else(|_| {
+            DataFusionError::Internal("First column must be list array of A counts".to_string())
+        })?;
+        let c_counts_array = states[1].as_any().downcast_ref::<ListArray>().ok_or_else(|_| {
+            DataFusionError::Internal("Second column must be list array of C counts".to_string())
+        })?;
+        let g_counts_array = states[2].as_any().downcast_ref::<ListArray>().ok_or_else(|_| {
+            DataFusionError::Internal("Third column must be list array of G counts".to_string())
+        })?;
+        let t_counts_array = states[3].as_any().downcast_ref::<ListArray>().ok_or_else(|_| {
+            DataFusionError::Internal("Fourth column must be list array of T counts".to_string())
+        })?;
+        let n_counts_array = states[4].as_any().downcast_ref::<ListArray>().ok_or_else(|_| {
+            DataFusionError::Internal("Fifth column must be list array of N counts".to_string())
+        })?;
+        let max_pos_array = states[5].as_any().downcast_ref::<UInt32Array>().ok_or_else(|_| {
+            DataFusionError::Internal("Sixth column must be u32 array of max positions".to_string())
+        })?;
+
+        for i in 0..a_counts_array.len() {
+            let other_a_counts = a_counts_array.value(i).as_any().downcast_ref::<UInt64Array>().unwrap();
+            let other_c_counts = c_counts_array.value(i).as_any().downcast_ref::<UInt64Array>().unwrap();
+            let other_g_counts = g_counts_array.value(i).as_any().downcast_ref::<UInt64Array>().unwrap();
+            let other_t_counts = t_counts_array.value(i).as_any().downcast_ref::<UInt64Array>().unwrap();
+            let other_max_pos = max_pos_array.value(i) as usize;
+
+            // Upewniamy się, że nasz akumulator ma wystarczającą pojemność do połączenia stanów.
+            self.ensure_capacity(other_max_pos);
+
+            // Sumujemy zliczenia z innych akumulatorów do bieżącego stanu.
+            for pos in 0..other_max_pos {
+                self.a_counts[pos] += other_a_counts.value(pos);
+                self.c_counts[pos] += other_c_counts.value(pos);
+                self.g_counts[pos] += other_g_counts.value(pos);
+                self.t_counts[pos] += other_t_counts.value(pos);
+            }
+        }
+
+        Ok(())
     }
 
-    // fn evaluate(&mut self) -> Result<ScalarValue> {
-    //     let mut map: HashMap<&str, Vec<Option<u32>>> = HashMap::new();
-    //     map.insert("A_count", self.base_count[0].clone());
-    //     map.insert("C_count", self.base_count[1].clone());
-    //     map.insert("T_count", self.base_count[2].clone());
-    //     map.insert("G_count", self.base_count[3].clone());
-    //     map.insert("N_count", self.base_count[4].clone());
-    //     Ok(ScalarValue::Struct(get_struct_array(map))) 
-    // }
+    fn size(&self) -> usize {
+        std::mem::size_of_val(self)
+            + self.a_counts.capacity() * std::mem::size_of::<u64>()
+            + self.c_counts.capacity() * std::mem::size_of::<u64>()
+            + self.g_counts.capacity() * std::mem::size_of::<u64>()
+            + self.t_counts.capacity() * std::mem::size_of::<u64>()
+    }
 }
 
+fn register_base_sequence_content(ctx: &ExonSession) {
+    let udaf = create_udaf(
+        "base_sequence_content",
+        vec![DataType::Utf8],
+        Arc::new(DataType::List(Arc::new(Field::new(
+            "position_content",
+            DataType::Struct(vec![
+                Field::new("A", DataType::UInt64, false),
+                Field::new("C", DataType::UInt64, false),
+                Field::new("G", DataType::UInt64, false),
+                Field::new("T", DataType::UInt64, false),
+                Field::new("N", DataType::UInt64, false)
+            ]),
+            false
+        )))),
+        Volatility::Immutable,
+        Arc::new(|_| Ok(Box::new(BaseSequenceContent::new()))),
+        Arc::new(vec![
+            DataType::List(Arc::new(Field::new("A_counts", DataType::UInt64, false))),
+            DataType::List(Arc::new(Field::new("C_counts", DataType::UInt64, false))),
+            DataType::List(Arc::new(Field::new("G_counts", DataType::UInt64, false))),
+            DataType::List(Arc::new(Field::new("T_counts", DataType::UInt64, false))),
+            DataType::List(Arc::new(Field::new("N_counts", DataType::UInt64, false))),
+            DataType::UInt32,
+        ])
+    );
+    ctx.session.register_udaf(udaf);
+}
 
 pub(crate) async fn do_base_sequence_content(
     ctx: &ExonSession,
     table_name: String
 )-> DataFrame {
-    ctx.sql("WITH my_map AS (SELECT MAP { 'key1': 'value1', 'key2': 'value2' } AS map) SELECT map_extract(map, 'key1') AS key1, map_extract(map, 'key2') AS key2 FROM my_map;").await.unwrap()
+    register_base_sequence_content(ctx);
+
+    let query = format!(
+        r#"
+        SELECT * FROM {}
+        "#,
+        table_name
+    );
+
+    ctx.sql(&query).await.unwrap()
 }
 
 pub(crate) async fn do_test_base_sequence_content(
