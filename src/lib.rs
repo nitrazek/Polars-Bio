@@ -31,7 +31,7 @@ use crate::option::{
 use crate::scan::{maybe_register_table, register_frame, register_table};
 use crate::streaming::RangeOperationScan;
 use crate::utils::convert_arrow_rb_schema_to_polars_df_schema;
-use crate::quality_control::{do_base_sequence_content, do_test_base_sequence_content};
+use crate::quality_control::{do_base_sequence_content, do_test_base_sequence_content, register_base_sequence_content};
 
 const LEFT_TABLE: &str = "s1";
 const RIGHT_TABLE: &str = "s2";
@@ -414,6 +414,9 @@ fn py_base_sequence_content(
     let rt = Runtime::new().unwrap();
     let ctx = &py_ctx.ctx;
     register_frame(py_ctx, df, LEFT_TABLE.to_string());
+    print!("REGISTERED FRAME");
+    register_base_sequence_content(ctx);
+    print!("REGISTERED UDAF");
 
     Ok(PyDataFrame::new(rt.block_on(
         do_base_sequence_content(ctx, LEFT_TABLE.to_string())
