@@ -51,8 +51,25 @@ class TestIOBAM:
 
     def test_fields(self):
         assert self.df["name"][2] == "20FUKAAXX100202:1:22:19822:80281"
-        assert self.df["flag"][3] == 1123
+        assert self.df["flags"][3] == 1123
         assert self.df["cigar"][4] == "101M"
+        assert (
+            self.df["sequence"][4]
+            == "TAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACCCTAACC"
+        )
+        assert (
+            self.df["quality_scores"][4]
+            == "CCDACCDCDABBDCDABBDCDABBDCDABBDCD?BBCCDABBCCDABBACDA?BDCAABBDBDA.=?><;CBB2@:;??:D>?5BAC??=DC;=5=?8:76"
+        )
+
+    def test_register(self):
+        pb.register_bam(f"{DATA_DIR}/io/bam/test.bam", "test_bam")
+        count = pb.sql("select count(*) as cnt from test_bam").collect()
+        assert count["cnt"][0] == 2333
+
+        projection = pb.sql("select name, flags from test_bam").collect()
+        assert projection["name"][2] == "20FUKAAXX100202:1:22:19822:80281"
+        assert projection["flags"][3] == 1123
 
 
 class TestIOBED:
