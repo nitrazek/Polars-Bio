@@ -18,6 +18,7 @@ from .range_op import FilterOp, count_overlaps, coverage, merge, nearest, overla
 from .range_viz import visualize_intervals
 
 from .quality_control_op import base_sequence_content
+from .quality_control_viz import plot_base_content
 
 POLARS_BIO_MAX_THREADS = "datafusion.execution.target_partitions"
 
@@ -47,5 +48,6 @@ __all__ = [
     "ReadOptions",
     "VcfReadOptions",
     "set_option",
-    "base_sequence_content"
+    "base_sequence_content",
+    "plot_base_content"
 ]
