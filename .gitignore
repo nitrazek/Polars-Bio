@@ -17,7 +17,7 @@ benchmark/src/results/overlap
 mprofile*dat
 *csv
 *fastq
-notebooks/tmp
 *.parquet
 rust_logs.txt
 notebooks/.ipynb_checkpoints
+notebooks/tmp
