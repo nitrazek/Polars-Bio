@@ -11,6 +11,9 @@ use datafusion::physical_plan::Accumulator;
 use datafusion::scalar::ScalarValue;
 use exon::ExonSession;
 
+use std::fs::OpenOptions;
+use std::io::Write;
+
 #[derive(Debug)]
 struct BaseSequenceContent {
     a_counts: Vec<Option<u64>>,
@@ -47,34 +50,52 @@ impl BaseSequenceContent {
 
 impl Accumulator for BaseSequenceContent {
     fn state(&mut self) -> Result<Vec<ScalarValue>> {
-        Ok(vec![
-            ScalarValue::List(Arc::new(
-                ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
-                    self.a_counts.clone(),
-                )]),
-            )),
-            ScalarValue::List(Arc::new(
-                ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
-                    self.c_counts.clone(),
-                )]),
-            )),
-            ScalarValue::List(Arc::new(
-                ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
-                    self.g_counts.clone(),
-                )]),
-            )),
-            ScalarValue::List(Arc::new(
-                ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
-                    self.t_counts.clone(),
-                )]),
-            )),
-            ScalarValue::List(Arc::new(
-                ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
-                    self.n_counts.clone(),
-                )]),
-            )),
-            ScalarValue::from(self.max_position_seen as u64),
-        ])
+        let a_counts_list = ScalarValue::List(Arc::new(
+            ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
+                self.a_counts.clone(),
+            )]),
+        ));
+        let c_counts_list = ScalarValue::List(Arc::new(
+            ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
+                self.c_counts.clone(),
+            )]),
+        ));
+        let g_counts_list = ScalarValue::List(Arc::new(
+            ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
+                self.g_counts.clone(),
+            )]),
+        ));
+        let t_counts_list = ScalarValue::List(Arc::new(
+            ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
+                self.t_counts.clone(),
+            )]),
+        ));
+        let n_counts_list = ScalarValue::List(Arc::new(
+            ListArray::from_iter_primitive::<UInt64Type, _, _>(vec![Some(
+                self.n_counts.clone(),
+            )]),
+        ));
+        let max_position_seen = ScalarValue::from(self.max_position_seen as u64);
+
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("/home/sh4dqw/dev/studies/Polars-UDF/rust_logs.txt") {
+            writeln!(file, "[STATE] Returning serialized state (A): {}", a_counts_list.data_type());
+            writeln!(file, "[STATE] Returning serialized state (C): {}", c_counts_list.data_type());
+            writeln!(file, "[STATE] Returning serialized state (G): {}", g_counts_list.data_type());
+            writeln!(file, "[STATE] Returning serialized state (T): {}", t_counts_list.data_type());
+            writeln!(file, "[STATE] Returning serialized state (N): {}", n_counts_list.data_type());
+            writeln!(file, "[STATE] Returning serialized state (max_position_seen): {}", max_position_seen.data_type());
+        }
+        
+        let state = vec![
+            a_counts_list,
+            c_counts_list,
+            g_counts_list,
+            t_counts_list,
+            n_counts_list,
+            max_position_seen
+        ];
+        
+        Ok(state)
     }
 
     fn evaluate(&mut self) -> Result<ScalarValue> {
@@ -146,6 +167,11 @@ impl Accumulator for BaseSequenceContent {
                 DataFusionError::Internal("Argument must be string array".to_string())
             })?;
 
+        
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("/home/sh4dqw/dev/studies/Polars-UDF/rust_logs.txt") {
+            writeln!(file, "[UPDATE_BATCH] Start processing batch. Num values: {}. Current max_pos: {}", values[0].len(), self.max_position_seen);
+        }
+
         for i in 0..sequences.len() {
             if !sequences.is_null(i) {
                 let seq = sequences.value(i);
@@ -182,6 +208,10 @@ impl Accumulator for BaseSequenceContent {
             }
         }
 
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("/home/sh4dqw/dev/studies/Polars-UDF/rust_logs.txt") {
+            writeln!(file, "[UPDATE_BATCH] Finished processing batch. Num values: {}. Current max_pos: {}", values[0].len(), self.max_position_seen);
+        }
+
         Ok(())
     }
 
@@ -190,6 +220,14 @@ impl Accumulator for BaseSequenceContent {
             return Ok(());
         }
 
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("/home/sh4dqw/dev/studies/Polars-UDF/rust_logs.txt") {
+            writeln!(file, "[MERGE_BATCH] Started merging batch. Num A counts: {}. Current max_pos: {}", states[0].len(), self.max_position_seen);
+            writeln!(file, "[MERGE_BATCH] Started merging batch. Num C counts: {}. Current max_pos: {}", states[1].len(), self.max_position_seen);
+            writeln!(file, "[MERGE_BATCH] Started merging batch. Num G counts: {}. Current max_pos: {}", states[2].len(), self.max_position_seen);
+            writeln!(file, "[MERGE_BATCH] Started merging batch. Num T counts: {}. Current max_pos: {}", states[3].len(), self.max_position_seen);
+            writeln!(file, "[MERGE_BATCH] Started merging batch. Num N counts: {}. Current max_pos: {}", states[4].len(), self.max_position_seen);
+        }
+        
         let a_counts_array = states[0]
             .as_any()
             .downcast_ref::<ListArray>()
@@ -277,6 +315,10 @@ impl Accumulator for BaseSequenceContent {
             }
         }
 
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("/home/sh4dqw/dev/studies/Polars-UDF/rust_logs.txt") {
+            writeln!(file, "[MERGE_BATCH] Stopped merging batch. Num values: {}. Current max_pos: {}", states[0].len(), self.max_position_seen);
+        }
+        
         Ok(())
     }
 

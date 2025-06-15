@@ -407,13 +407,30 @@ fn py_from_polars(
 
 #[pyfunction]
 #[pyo3(signature = (py_ctx, df))]
-fn py_base_sequence_content(
+fn py_base_sequence_content_frame(
     py_ctx: &PyBioSessionContext,
     df: PyArrowType<ArrowArrayStreamReader>,
 ) -> PyResult<PyDataFrame> {
     let rt = Runtime::new().unwrap();
     let ctx = &py_ctx.ctx;
     register_frame(py_ctx, df, LEFT_TABLE.to_string());
+    register_base_sequence_content(ctx);
+
+    Ok(PyDataFrame::new(rt.block_on(do_base_sequence_content(
+        ctx,
+        LEFT_TABLE.to_string(),
+    ))))
+}
+
+#[pyfunction]
+#[pyo3(signature = (py_ctx, df_path_or_table))]
+fn py_base_sequence_content_scan(
+    py_ctx: &PyBioSessionContext,
+    df_path_or_table: String,
+) -> PyResult<PyDataFrame> {
+    let rt = Runtime::new().unwrap();
+    let ctx = &py_ctx.ctx;
+    maybe_register_table(df_path_or_table, &LEFT_TABLE.to_string(), None, ctx, &rt);
     register_base_sequence_content(ctx);
 
     Ok(PyDataFrame::new(rt.block_on(do_base_sequence_content(
@@ -436,7 +453,8 @@ fn polars_bio(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_describe_vcf, m)?)?;
     m.add_function(wrap_pyfunction!(py_register_view, m)?)?;
     m.add_function(wrap_pyfunction!(py_from_polars, m)?)?;
-    m.add_function(wrap_pyfunction!(py_base_sequence_content, m)?)?;
+    m.add_function(wrap_pyfunction!(py_base_sequence_content_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(py_base_sequence_content_scan, m)?)?;
     // m.add_function(wrap_pyfunction!(unary_operation_scan, m)?)?;
     m.add_class::<PyBioSessionContext>()?;
     m.add_class::<FilterOp>()?;
