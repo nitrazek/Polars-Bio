@@ -2,21 +2,31 @@ import polars as pl
 import polars_bio as pb
 
 FASTQ_PATH = "./data/quality_control/example.fastq"
+PARQUET_PATH = "./data/quality_control/example.parquet"
 TARGET_PATH = "./data/quality_control/target.csv"
 
 target_df = pl.read_csv(TARGET_PATH)
 
 
 class TestBaseSequenceContent:
-    def test_with_path(self):
-        """Test base_sequence_content with file path as input"""
+    def test_with_fastq_path(self):
+        """Test base_sequence_content with FASTQ file path as input"""
 
-        print(f"\nRunning test with file path input: {FASTQ_PATH}")
+        print(f"\nRunning test with FASTQ file path input: {FASTQ_PATH}")
         result = pb.base_sequence_content(FASTQ_PATH)
         
         self._assert_equal(target_df, result)
-        print("✓ Path input test PASSED")
-    
+        print("✓ FASTQ path input test PASSED")
+
+    def test_with_parquet_path(self):
+        """Test base_sequence_content with PARQUET file path as input"""
+
+        print(f"\nRunning test with PARQUET file path input: {PARQUET_PATH}")
+        result = pb.base_sequence_content(PARQUET_PATH)
+
+        self._assert_equal(target_df, result)
+        print("✓ PARQUET path input test PASSED")
+
     def test_with_lazy_frame(self):
         """Test base_sequence_content with LazyFrame as input"""
 
@@ -58,10 +68,11 @@ class TestBaseSequenceContent:
 
     def run_all_tests(self):
         """Run all tests in this class"""
-        self.test_with_path()
+        self.test_with_fastq_path()
+        self.test_with_parquet_path()
         self.test_with_lazy_frame()
         self.test_with_polars_df()
         self.test_with_pandas_df()
         print("\n✓✓ All tests completed successfully!")
 
-#TestBaseSequenceContent().run_all_tests()
+TestBaseSequenceContent().run_all_tests()
