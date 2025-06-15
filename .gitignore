@@ -21,3 +21,4 @@ mprofile*dat
 rust_logs.txt
 notebooks/.ipynb_checkpoints
 notebooks/tmp
+it/data/polars-bio-it.json
