@@ -264,10 +264,10 @@ impl Accumulator for BaseSequenceContent {
             })?;
         let max_pos_array = states[5]
             .as_any()
-            .downcast_ref::<UInt32Array>()
+            .downcast_ref::<UInt64Array>()
             .ok_or_else(|| {
                 DataFusionError::Internal(
-                    "Sixth column must be u32 array of max positions".to_string(),
+                    "Sixth column must be u64 array of max positions".to_string(),
                 )
             })?;
 
@@ -353,12 +353,12 @@ pub(crate) fn register_base_sequence_content(ctx: &ExonSession) {
         Volatility::Immutable,
         Arc::new(|_| Ok(Box::new(BaseSequenceContent::new()))),
         Arc::new(vec![
-            DataType::List(Arc::new(Field::new("a_counts", DataType::UInt64, false))),
-            DataType::List(Arc::new(Field::new("c_counts", DataType::UInt64, false))),
-            DataType::List(Arc::new(Field::new("g_counts", DataType::UInt64, false))),
-            DataType::List(Arc::new(Field::new("t_counts", DataType::UInt64, false))),
-            DataType::List(Arc::new(Field::new("n_counts", DataType::UInt64, false))),
-            DataType::UInt32,
+            DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+            DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+            DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+            DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+            DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+            DataType::UInt64,
         ]),
     );
     ctx.session.register_udaf(udaf);

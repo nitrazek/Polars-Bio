@@ -12,7 +12,6 @@ def base_sequence_content(
     table_path = None
     df = None
 
-    print(type(data))
     if isinstance(data, str):
         path = Path(data)
         if not path.exists():
